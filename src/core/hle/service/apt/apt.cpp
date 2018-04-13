@@ -544,6 +544,26 @@ void Module::Interface::StartLibraryApplet(Kernel::HLERequestContext& ctx) {
     rb.Push(apt->applet_manager->StartLibraryApplet(applet_id, object, buffer));
 }
 
+void Module::Interface::PrepareToCloseLibraryApplet(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x25, 3, 0); // 0x002500C0
+    bool not_pause = rp.Pop<bool>();
+    bool exiting = rp.Pop<bool>();
+    bool jump_to_home = rp.Pop<bool>();
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+    rb.Push(apt->applet_manager->PrepareToCloseLibraryApplet(not_pause, exiting, jump_to_home));
+}
+
+void Module::Interface::CloseLibraryApplet(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x28, 1, 4); // 0x00280044
+    u32 parameter_size = rp.Pop<u32>();
+    Kernel::Handle handle = rp.Pop<u32>();
+    const u32 unused = rp.Pop<u32>();
+    VAddr parameter_addr = rp.Pop<VAddr>();
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+    ResultCode res = apt->applet_manager->CloseLibraryApplet(parameter_size, handle, parameter_addr);
+    rb.Push(res);
+}
+
 void Module::Interface::CancelLibraryApplet(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx, 0x3B, 1, 0); // 0x003B0040
     bool exiting = rp.Pop<bool>();

@@ -93,34 +93,36 @@ void VertexLoader::LoadVertex(u32 base_address, int index, int vertex,
                                    : 1));
             }
 
+            u8* source_data = Memory::GetPhysicalPointer(source_addr);
+            if (source_data == nullptr) {
+                LOG_CRITICAL(HW_GPU, "Invalid address 0x%08X", source_addr);
+                return;
+            }
+
             switch (vertex_attribute_formats[i]) {
             case PipelineRegs::VertexAttributeFormat::BYTE: {
-                const s8* srcdata =
-                    reinterpret_cast<const s8*>(Memory::GetPhysicalPointer(source_addr));
+                const s8* srcdata = reinterpret_cast<const s8*>(source_data);
                 for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
                     input.attr[i][comp] = float24::FromFloat32(srcdata[comp]);
                 }
                 break;
             }
             case PipelineRegs::VertexAttributeFormat::UBYTE: {
-                const u8* srcdata =
-                    reinterpret_cast<const u8*>(Memory::GetPhysicalPointer(source_addr));
+                const u8* srcdata = reinterpret_cast<const u8*>(source_data);
                 for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
                     input.attr[i][comp] = float24::FromFloat32(srcdata[comp]);
                 }
                 break;
             }
             case PipelineRegs::VertexAttributeFormat::SHORT: {
-                const s16* srcdata =
-                    reinterpret_cast<const s16*>(Memory::GetPhysicalPointer(source_addr));
+                const s16* srcdata = reinterpret_cast<const s16*>(source_data);
                 for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
                     input.attr[i][comp] = float24::FromFloat32(srcdata[comp]);
                 }
                 break;
             }
             case PipelineRegs::VertexAttributeFormat::FLOAT: {
-                const float* srcdata =
-                    reinterpret_cast<const float*>(Memory::GetPhysicalPointer(source_addr));
+                const float* srcdata = reinterpret_cast<const float*>(source_data);
                 for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
                     input.attr[i][comp] = float24::FromFloat32(srcdata[comp]);
                 }

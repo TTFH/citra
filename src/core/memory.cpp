@@ -312,7 +312,6 @@ u8* GetPhysicalPointer(PAddr address) {
                 break;
             }
         }
-        ASSERT_MSG(target_pointer != nullptr, "Invalid FCRAM address");
         break;
     case N3DS_EXTRA_RAM_PADDR:
         target_pointer = n3ds_extra_ram.data() + offset_into_region;
@@ -381,8 +380,6 @@ void RasterizerMarkRegionCached(PAddr start, u32 size, bool cached) {
                 }
                 break;
             }
-            default:
-                UNREACHABLE();
             }
         }
     }
