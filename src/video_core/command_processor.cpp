@@ -452,6 +452,7 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
             LOG_ERROR(HW_GPU, "Invalid GS program offset %u", offset);
         } else {
             g_state.gs.program_code[offset] = value;
+            g_state.gs.MarkProgramCodeDirty();
             offset++;
         }
         break;
@@ -470,6 +471,7 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
             LOG_ERROR(HW_GPU, "Invalid GS swizzle pattern offset %u", offset);
         } else {
             g_state.gs.swizzle_data[offset] = value;
+            g_state.gs.MarkSwizzleDataDirty();
             offset++;
         }
         break;
@@ -519,8 +521,10 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
             LOG_ERROR(HW_GPU, "Invalid VS program offset %u", offset);
         } else {
             g_state.vs.program_code[offset] = value;
+            g_state.vs.MarkProgramCodeDirty();
             if (!g_state.regs.pipeline.gs_unit_exclusive_configuration) {
                 g_state.gs.program_code[offset] = value;
+                g_state.gs.MarkProgramCodeDirty();
             }
             offset++;
         }
@@ -540,8 +544,10 @@ static void WritePicaReg(u32 id, u32 value, u32 mask) {
             LOG_ERROR(HW_GPU, "Invalid VS swizzle pattern offset %u", offset);
         } else {
             g_state.vs.swizzle_data[offset] = value;
+            g_state.vs.MarkSwizzleDataDirty();
             if (!g_state.regs.pipeline.gs_unit_exclusive_configuration) {
                 g_state.gs.swizzle_data[offset] = value;
+                g_state.gs.MarkSwizzleDataDirty();
             }
             offset++;
         }
