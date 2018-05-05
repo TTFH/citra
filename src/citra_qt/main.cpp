@@ -1375,6 +1375,7 @@ void Initialize() {
 #endif
 
 int main(int argc, char* argv[]) {
+    Initialize();
     MicroProfileOnThreadCreate("Frontend");
     SCOPE_EXIT({ MicroProfileShutdown(); });
 
