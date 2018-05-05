@@ -31,7 +31,8 @@ MICROPROFILE_DEFINE(OpenGL_Blits, "OpenGL", "Blits", MP_RGB(100, 100, 255));
 MICROPROFILE_DEFINE(OpenGL_CacheManagement, "OpenGL", "Cache Mgmt", MP_RGB(100, 255, 100));
 
 RasterizerOpenGL::RasterizerOpenGL()
-    : shader_dirty(true), vertex_buffer(GL_ARRAY_BUFFER, VERTEX_BUFFER_SIZE) {
+    : shader_dirty(true), vertex_buffer(GL_ARRAY_BUFFER, VERTEX_BUFFER_SIZE),
+      uniform_buffer(GL_UNIFORM_BUFFER, UNIFORM_BUFFER_SIZE) {
     // Clipping plane 0 is always enabled for PICA fixed clip plane z <= 0
     state.clip_distance[0] = true;
 
@@ -44,19 +45,14 @@ RasterizerOpenGL::RasterizerOpenGL()
     // Create cubemap texture and sampler objects
     texture_cube_sampler.Create();
     state.texture_cube_unit.sampler = texture_cube_sampler.sampler.handle;
-    texture_cube.Create();
 
     // Generate VBO, VAO and UBO
     vertex_array.Create();
-    uniform_buffer.Create();
 
     state.draw.vertex_array = vertex_array.handle;
     state.draw.vertex_buffer = vertex_buffer.GetHandle();
-    state.draw.uniform_buffer = uniform_buffer.handle;
+    state.draw.uniform_buffer = uniform_buffer.GetHandle();
     state.Apply();
-
-    // Bind the UBO to binding point 0
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniform_buffer.handle);
 
     uniform_block_data.dirty = true;
 
@@ -69,6 +65,10 @@ RasterizerOpenGL::RasterizerOpenGL()
     uniform_block_data.proctex_alpha_map_dirty = true;
     uniform_block_data.proctex_lut_dirty = true;
     uniform_block_data.proctex_diff_lut_dirty = true;
+
+    glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &uniform_buffer_alignment);
+    uniform_size_aligned_fs =
+        Common::AlignUp<size_t>(sizeof(UniformData), uniform_buffer_alignment);
 
     // Set vertex attributes
     glVertexAttribPointer(GLShader::ATTRIBUTE_POSITION, 4, GL_FLOAT, GL_FALSE,
@@ -392,19 +392,18 @@ void RasterizerOpenGL::DrawTriangles() {
                 switch (texture.config.type.Value()) {
                 case TextureType::TextureCube:
                     using CubeFace = Pica::TexturingRegs::CubeFace;
-                    if (res_cache.FillTextureCube(
-                            texture_cube.handle, texture,
-                            regs.texturing.GetCubePhysicalAddress(CubeFace::PositiveX),
-                            regs.texturing.GetCubePhysicalAddress(CubeFace::NegativeX),
-                            regs.texturing.GetCubePhysicalAddress(CubeFace::PositiveY),
-                            regs.texturing.GetCubePhysicalAddress(CubeFace::NegativeY),
-                            regs.texturing.GetCubePhysicalAddress(CubeFace::PositiveZ),
-                            regs.texturing.GetCubePhysicalAddress(CubeFace::NegativeZ))) {
-                        state.texture_cube_unit.texture_cube = texture_cube.handle;
-                    } else {
-                        // Can occur when texture addr is null or its memory is unmapped/invalid
-                        state.texture_cube_unit.texture_cube = 0;
-                    }
+                    TextureCubeConfig config;
+                    config.px = regs.texturing.GetCubePhysicalAddress(CubeFace::PositiveX);
+                    config.nx = regs.texturing.GetCubePhysicalAddress(CubeFace::NegativeX);
+                    config.py = regs.texturing.GetCubePhysicalAddress(CubeFace::PositiveY);
+                    config.ny = regs.texturing.GetCubePhysicalAddress(CubeFace::NegativeY);
+                    config.pz = regs.texturing.GetCubePhysicalAddress(CubeFace::PositiveZ);
+                    config.nz = regs.texturing.GetCubePhysicalAddress(CubeFace::NegativeZ);
+                    config.width = texture.config.width;
+                    config.format = texture.format;
+                    state.texture_cube_unit.texture_cube =
+                        res_cache.GetTextureCube(config).texture.handle;
+
                     texture_cube_sampler.SyncWithConfig(texture.config);
                     state.texture_units[texture_index].texture_2d = 0;
                     continue; // Texture unit 0 setup finished. Continue to next unit
@@ -475,11 +474,7 @@ void RasterizerOpenGL::DrawTriangles() {
     }
 
     // Sync the uniform data
-    if (uniform_block_data.dirty) {
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(UniformData), &uniform_block_data.data,
-                     GL_STATIC_DRAW);
-        uniform_block_data.dirty = false;
-    }
+    UploadUniforms();
 
     // Viewport can have negative offsets or larger
     // dimensions than our framebuffer sub-rect.
@@ -1651,4 +1646,20 @@ void RasterizerOpenGL::SyncLightDistanceAttenuationScale(int light_index) {
         uniform_block_data.data.light_src[light_index].dist_atten_scale = dist_atten_scale;
         uniform_block_data.dirty = true;
     }
+}
+
+void RasterizerOpenGL::UploadUniforms() {
+    if (!uniform_block_data.dirty)
+        return;
+
+    size_t uniform_size = uniform_size_aligned_fs;
+    u8* uniforms;
+    GLintptr offset;
+    std::tie(uniforms, offset, std::ignore) =
+        uniform_buffer.Map(uniform_size, uniform_buffer_alignment);
+    std::memcpy(uniforms, &uniform_block_data.data, sizeof(UniformData));
+    uniform_buffer.Unmap(uniform_size);
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uniform_buffer.GetHandle(), offset,
+                      sizeof(UniformData));
+    uniform_block_data.dirty = false;
 }
