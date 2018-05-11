@@ -10,6 +10,7 @@
 #include <lmcons.h>
 #include <glad/glad.h>
 #define QT_NO_OPENGL
+#include <cinttypes>
 #include <QDesktopWidget>
 #include <QFileDialog>
 #include <QFutureWatcher>
@@ -19,6 +20,8 @@
 #include <QtWidgets>
 #include "citra_qt/aboutdialog.h"
 #include "citra_qt/bootmanager.h"
+#include "citra_qt/camera/qt_multimedia_camera.h"
+#include "citra_qt/camera/still_image_camera.h"
 #include "citra_qt/compatdb.h"
 #include "citra_qt/configuration/config.h"
 #include "citra_qt/configuration/configure_dialog.h"
@@ -400,6 +403,8 @@ void GMainWindow::RestoreUIState() {
 void GMainWindow::ConnectWidgetEvents() {
     connect(game_list, &GameList::GameChosen, this, &GMainWindow::OnGameListLoadFile);
     connect(game_list, &GameList::OpenFolderRequested, this, &GMainWindow::OnGameListOpenFolder);
+    connect(game_list, &GameList::NavigateToGamedbEntryRequested, this,
+            &GMainWindow::OnGameListNavigateToGamedbEntry);
 
     connect(this, &GMainWindow::EmulationStarting, render_window,
             &GRenderWindow::OnEmulationStarting);
@@ -699,6 +704,8 @@ void GMainWindow::ShutdownGame() {
     emu_thread->wait();
     emu_thread = nullptr;
 
+    Camera::QtMultimediaCameraHandler::ReleaseHandlers();
+
     // The emulation is stopped, so closing the window or not does not matter anymore
     disconnect(render_window, &GRenderWindow::Closed, this, &GMainWindow::OnStopGame);
 
@@ -803,6 +810,25 @@ void GMainWindow::OnGameListOpenFolder(u64 program_id, GameListOpenTarget target
     NGLOG_INFO(Frontend, "Opening {} path for program_id={:016x}", open_target, program_id);
 
     QDesktopServices::openUrl(QUrl::fromLocalFile(qpath));
+}
+
+void GMainWindow::OnGameListNavigateToGamedbEntry(
+    u64 program_id,
+    std::unordered_map<std::string, std::pair<QString, QString>>& compatibility_list) {
+
+    auto it = std::find_if(
+        compatibility_list.begin(), compatibility_list.end(),
+        [program_id](const std::pair<std::string, std::pair<QString, QString>>& element) {
+            std::string pid = Common::StringFromFormat("%016" PRIX64, program_id);
+            return element.first == pid;
+        });
+
+    QString directory = "";
+
+    if (it != compatibility_list.end())
+        directory = it->second.second;
+
+    QDesktopServices::openUrl(QUrl("https://citra-emu.org/game/" + directory));
 }
 
 void GMainWindow::OnMenuLoadFile() {
@@ -913,6 +939,7 @@ void GMainWindow::OnMenuRecentFile() {
 }
 
 void GMainWindow::OnStartGame() {
+    Camera::QtMultimediaCameraHandler::ResumeCameras();
     emu_thread->SetRunning(true);
     qRegisterMetaType<Core::System::ResultStatus>("Core::System::ResultStatus");
     qRegisterMetaType<std::string>("std::string");
@@ -928,7 +955,7 @@ void GMainWindow::OnStartGame() {
 
 void GMainWindow::OnPauseGame() {
     emu_thread->SetRunning(false);
-
+    Camera::QtMultimediaCameraHandler::StopCameras();
     ui.action_Start->setEnabled(true);
     ui.action_Pause->setEnabled(false);
     ui.action_Stop->setEnabled(true);
@@ -1400,6 +1427,11 @@ int main(int argc, char* argv[]) {
     FileUtil::CreateFullPath(FileUtil::GetUserPath(D_LOGS_IDX));
     Log::AddBackend(
         std::make_unique<Log::FileBackend>(FileUtil::GetUserPath(D_LOGS_IDX) + LOG_FILE));
+
+    // Register CameraFactory
+    Camera::RegisterFactory("image", std::make_unique<Camera::StillImageCameraFactory>());
+    Camera::RegisterFactory("qt", std::make_unique<Camera::QtMultimediaCameraFactory>());
+    Camera::QtMultimediaCameraHandler::Init();
 
     main_window.show();
     return app.exec();
